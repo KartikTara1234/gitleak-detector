@@ -39,14 +39,17 @@ repo-secret-sweeper/
 │       └── components/     ScanForm, Report (score / findings / gitignore / rotation), History, Rules
 ├── server/
 │   ├── src/
-│   │   ├── index.js        Express routes, rate limiting, static serving
-│   │   ├── github.js       URL parsing, shallow clone, cleanup
+│   │   ├── index.js        local entry: starts the HTTP server
+│   │   ├── app.js          Express app (routes, rate limiting) — shared by index.js and api/index.js
+│   │   ├── github.js       URL parsing, git clone or tarball download, cleanup
+│   │   ├── untar.js        pure-Node .tar.gz extractor (no tar binary needed)
 │   │   ├── scanner.js      file walk, pattern + entropy detection, scoring, gitignore + rotation builders
 │   │   ├── rules.js        detection rules, placeholder hints, rotation steps per provider
 │   │   └── store.js        MongoDB / in-memory scan history
 │   └── test/               unit tests (node --test)
 ├── demo-leaky-repo.tar.gz  a deliberately insecure sample project, unpacked at startup — every secret is FAKE
-├── Dockerfile · render.yaml · .env.example
+├── api/index.js            Vercel serverless entry (exports the Express app)
+├── vercel.json · Dockerfile · render.yaml · .env.example
 ```
 
 ## Run locally
@@ -91,7 +94,9 @@ Rate limited to 6 scans per IP per minute (`SCANS_PER_MINUTE`) and one concurren
 
 ## Deploy
 
-**Render (free tier, recommended):** New → Blueprint → select this repo. `render.yaml` builds the Dockerfile. Set `MONGODB_URI` in the dashboard if you want persistent history (MongoDB Atlas free tier works).
+**Vercel (used for the live demo):** Import the GitHub repo at vercel.com/new — `vercel.json` builds the React client as static files and runs the Express app as a serverless function under `/api/*`. No git binary there, so scans use the tarball path; extraction is pure Node (`server/src/untar.js`). Scan history is in-memory per function instance unless `MONGODB_URI` is set in the project's environment variables.
+
+**Render:** New → Blueprint → select this repo. `render.yaml` builds the Dockerfile.
 
 **Any Docker host:**
 

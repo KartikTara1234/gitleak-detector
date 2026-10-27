@@ -6,6 +6,7 @@ import { pipeline } from 'node:stream/promises';
 import { Readable } from 'node:stream';
 import os from 'node:os';
 import path from 'node:path';
+import { extractTarGz } from './untar.js';
 
 const exec = promisify(execFile);
 
@@ -54,7 +55,7 @@ async function gitClone({ cloneUrl, branch }, dir, timeoutMs) {
 }
 
 // ---- Strategy 2: download GitHub's tarball and extract with tar (no git needed) ----
-// `tar` ships with Windows 10+, macOS and every Linux.
+// Extraction is pure Node, so this also works on serverless hosts with no tar binary.
 async function tarballDownload({ owner, repo, branch }, dir, timeoutMs) {
   const ref = branch || 'HEAD';
   const url = `https://codeload.github.com/${owner}/${repo}/tar.gz/${encodeURIComponent(ref)}`;
@@ -74,25 +75,18 @@ async function tarballDownload({ owner, repo, branch }, dir, timeoutMs) {
     clearTimeout(t);
   }
 
-  // The archive's top-level folder is "<repo>-<sha>/" for HEAD downloads, so the commit
-  // can be recovered from the listing. Optional: a failure here just leaves commit null.
-  let commit = null;
-  try {
-    const { stdout } = await exec('tar', ['-tzf', archive], { maxBuffer: 50 * 1024 * 1024 });
-    const top = (stdout.split('\n')[0] || '').replace(/\/.*$/, '');
-    const m = top.match(/-([0-9a-f]{7,40})$/i);
-    if (m) commit = m[1].slice(0, 7);
-  } catch { /* optional */ }
-
   const out = path.join(dir, 'src');
-  await fs.mkdir(out);
+  let topDir = null;
   try {
-    // --strip-components=1 drops that top folder.
-    await exec('tar', ['-xzf', archive, '-C', out, '--strip-components=1'], { timeout: timeoutMs, maxBuffer: 10 * 1024 * 1024 });
+    ({ topDir } = await extractTarGz(archive, out, { strip: 1 }));
   } catch (err) {
-    throw httpError('Could not extract the repository archive (is `tar` available on this machine?): ' + (err.stderr || err.message).toString().split('\n')[0], 500);
+    throw httpError('Could not extract the repository archive: ' + err.message, 500);
   }
   await fs.rm(archive, { force: true });
+  // Top folder is "<repo>-<sha>" for HEAD downloads; recover the short commit from it.
+  let commit = null;
+  const m = (topDir || '').match(/-([0-9a-f]{7,40})$/i);
+  if (m) commit = m[1].slice(0, 7);
   return { root: out, commit };
 }
 
