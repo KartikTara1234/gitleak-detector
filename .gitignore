@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+# The demo repo is shipped as demo-leaky-repo.tar.gz and unpacked at startup;
+# its fake keys would trip GitHub push protection if committed as files.
+demo-leaky-repo/
+# local helper scripts
+*.cmd
